@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^time-dashboard/Chart\\.yaml$/"
+      ],
+      "matchStrings": [
+        "appVersion:\\s*\"(?<currentValue>v?[\\d.]+)\""
+      ],
+      "depNameTemplate": "ghcr.io/jvhaarst/time_dashboard",
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "matchDepNames": [
+        "ghcr.io/jvhaarst/time_dashboard"
+      ],
+      "groupName": "time_dashboard image"
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+# Default values for time-dashboard.
+#
+# The site is the public status page of a stratum-1 NTP server. It renders server-side
+# from a VictoriaMetrics store, so the only thing it needs besides an ingress is a
+# reachable store URL.
+
+image:
+  repository: ghcr.io/jvhaarst/time_dashboard
+  # Empty = use the chart's appVersion (the single source of truth Renovate bumps).
+  # Set this only to pin/override a specific tag.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Two replicas, because this is the one public page whose job is to be up. The app is
+# stateless and holds only a short in-process page cache, so replicas do not need to
+# agree about anything.
+replicaCount: 2
+
+service:
+  port: 80
+
+ingress:
+  enabled: true
+  className: traefik
+  host: time.vanhaarst.net
+  # cert-manager ClusterIssuer for TLS; empty disables the annotation.
+  clusterIssuer: letsencrypt-production
+  tls: true
+
+# Where the figures come from.
+#
+# `VMSingle/ntp` in the monitoring namespace: a second VictoriaMetrics that holds only
+# this NTP server's series and keeps them for a year, rather than the cluster's main
+# 30d store. 8429 is a vmsingle's real listener -- its Service also publishes 8428 as an
+# alias at the same target port, so both work, but 8429 is the canonical one.
+#
+# The store has no route from outside the cluster and does not need one: the browser
+# never queries it, this app does.
+metrics:
+  url: http://vmsingle-ntp.monitoring.svc.cluster.local:8429
+  # Seconds per query. Must stay below readinessProbe.timeoutSeconds, or a slow store
+  # marks the pod unready instead of just making the page late.
+  timeout: 5
+
+# How long a rendered page is reused. The exporters scrape every 30 s, so a shorter
+# cache adds load without adding information.
+cacheSeconds: 15
+
+# What the page says about the machine it reports on. Text only; nothing here changes
+# which series are read.
+server:
+  name: ntp.vanhaarst.net
+  location: Wageningen, the Netherlands
+  hardware: Raspberry Pi with a Uputronics GPS/RTC HAT (u-blox MAX-M8Q)
+  # If set, the page states the server is an NTP Pool member and links here.
+  poolUrl: ""
+
+logLevel: INFO
+
+# Probes.
+#
+# Liveness is /healthz, which does NOT touch VictoriaMetrics: "is this process serving"
+# is the only question liveness should ask. A liveness probe that depends on another
+# service restarts a healthy pod whenever that service is slow. That is not theoretical
+# on this cluster -- the zeildashboard probe rendered a page that called two external
+# APIs, and when one stopped answering on 2026-10-21 liveness restarted the pod five
+# times in nine minutes while the site was serving fine.
+#
+# Readiness is /readyz, which does query the store, with a timeout above the app's own
+# VM_TIMEOUT so the app returns its error page rather than having the probe time out
+# first.
+#
+# Set either to null to drop that probe entirely.
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 30
+  timeoutSeconds: 10
+  # Not 1. A single slow query should not pull a replica out of the ingress: Traefik
+  # shipped failureThreshold 1 on its own probe and one slow /ping dropped an ingress
+  # replica on this cluster.
+  failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    # No CPU limit: the work is one HTTP query and a template render, and a limit here
+    # buys throttling rather than protection.
+    memory: 192Mi
+
+# The image runs as uid 10001 and needs to write nothing.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Spread the replicas over nodes, so one node going down cannot take the page with it.
+# `ScheduleAnyway`, not `DoNotSchedule`: on a five-node cluster where two nodes are
+# memory-tight, a hard constraint would leave a replica Pending.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: time-dashboard
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+commonLabels: {}
+nameOverride: ""
+fullnameOverride: ""
