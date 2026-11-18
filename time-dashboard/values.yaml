@@ -50,7 +50,7 @@ cacheSeconds: 15
 # which series are read.
 server:
   name: ntp.vanhaarst.net
-  location: Wageningen, the Netherlands
+  location: Doorwerth, the Netherlands
   hardware: Raspberry Pi with a Uputronics GPS/RTC HAT (u-blox MAX-M8Q)
   # If set, the page states the server is an NTP Pool member and links here.
   poolUrl: ""
