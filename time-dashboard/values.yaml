@@ -54,6 +54,17 @@ server:
   hardware: Raspberry Pi with a Uputronics GPS/RTC HAT (u-blox MAX-M8Q)
   # If set, the page states the server is an NTP Pool member and links here.
   poolUrl: ""
+  # Whether to tell visitors the server answers over IPv6.
+  #
+  # false, and that is not pessimism. Measured from outside on 2026-11-18: the AAAA
+  # record resolves, chronyd listens on the IPv6 wildcard and chrony.conf has
+  # `allow all`, but every inbound IPv6 packet is refused one hop UPSTREAM of the
+  # router. 2001:4c3c:0:3d::1:17 answers with "Destination unreachable:
+  # Administratively prohibited" -- for ICMP echo, TCP 22 and UDP 123 alike -- and the
+  # FritzBox is never reached, so a port forward cannot fix it.
+  #
+  # Set this true only after an external probe answers, not after the ISP says it will.
+  ipv6: false
 
 logLevel: INFO
 
